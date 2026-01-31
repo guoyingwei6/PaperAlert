@@ -161,8 +161,6 @@ def write_article(article_data: Dict) -> bool:
         "Author": {"rich_text": [{"text": {"content": article_data.get('author', '')[:2000]}}]},
         "Abstract": {"rich_text": [{"text": {"content": article_data.get('abstract', '')[:2000]}}]},
         "摘要": {"rich_text": [{"text": {"content": article_data.get('abstract_cn', '')[:2000]}}]},
-        "研究动机和问题": {"rich_text": [{"text": {"content": article_data.get('motivation', '')[:2000]}}]},
-        "研究方法": {"rich_text": [{"text": {"content": article_data.get('method', '')[:2000]}}]},
         "Link": {"url": article_data.get('url', '')[:2000] if article_data.get('url') else None},
         "上传日期": {"date": {"start": datetime.now().strftime("%Y-%m-%d")}}
     }
@@ -319,8 +317,9 @@ def parse_crossref_item(item: Dict) -> Optional[Dict]:
 # (保持之前的实现不变)
 
 def translate_and_extract(title: str, abstract: str) -> Dict[str, str]:
-    """使用Claude翻译标题和摘要，并提取研究动机、问题、方法"""
+    """使用Claude翻译标题和摘要（简化版，节省token）"""
     if not abstract:
+        # 只翻译标题
         prompt = f"""请将以下英文标题翻译成中文：
 
 标题：{title}
@@ -328,7 +327,7 @@ def translate_and_extract(title: str, abstract: str) -> Dict[str, str]:
 要求：
 1. 翻译准确、符合学术规范
 2. 直接输出中文标题，不要其他内容"""
-        
+
         response = claude_client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=500,
@@ -336,20 +335,14 @@ def translate_and_extract(title: str, abstract: str) -> Dict[str, str]:
         )
 
         title_cn = response.content[0].text.strip()
-        
+
         return {
             'title_cn': title_cn,
-            'abstract_cn': '',
-            'motivation': '',
-            'method': ''
+            'abstract_cn': ''
         }
-    
-    prompt = f"""请完成以下任务：
 
-1. 将标题翻译成中文
-2. 将摘要翻译成中文
-3. 从摘要中提取研究动机和问题（2-3句话概括）
-4. 从摘要中提取研究方法（2-3句话概括）
+    # 只翻译标题和摘要，不提取动机和方法
+    prompt = f"""请将以下学术文章的标题和摘要翻译成中文：
 
 标题：{title}
 
@@ -358,36 +351,34 @@ def translate_and_extract(title: str, abstract: str) -> Dict[str, str]:
 请按以下JSON格式输出：
 {{
   "title_cn": "中文标题",
-  "abstract_cn": "中文摘要",
-  "motivation": "研究动机和问题",
-  "method": "研究方法"
+  "abstract_cn": "中文摘要"
 }}
 
-只输出JSON，不要其他内容。"""
-    
+要求：
+1. 翻译准确、符合学术规范
+2. 只输出JSON，不要其他内容"""
+
     try:
         response = claude_client.messages.create(
             model=CLAUDE_MODEL,
-            max_tokens=2000,
+            max_tokens=1500,
             messages=[{"role": "user", "content": prompt}]
         )
-        
+
         result_text = response.content[0].text.strip()
         if result_text.startswith('```'):
             result_text = result_text.split('```')[1]
             if result_text.startswith('json'):
                 result_text = result_text[4:]
-        
+
         result = json.loads(result_text)
         return result
-        
+
     except Exception as e:
         print(f"Claude API调用失败: {e}")
         return {
             'title_cn': title,
-            'abstract_cn': abstract,
-            'motivation': '',
-            'method': ''
+            'abstract_cn': abstract
         }
 
 def generate_issue_summary(articles: List[Dict]) -> str:
