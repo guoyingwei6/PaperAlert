@@ -36,8 +36,8 @@ def test_notion_api(api_key):
         print("   ❌ 未配置Notion API Key")
         return False
     
-    if not api_key.startswith('secret_'):
-        print(f"   ⚠️  API Key格式可能不正确（应该以'secret_'开头）")
+    if not api_key.startswith('secret_') and not api_key.startswith('ntn_'):
+        print(f"   ⚠️  API Key格式可能不正确（应该以'secret_'或'ntn_'开头）")
     
     # 测试API调用
     headers = {
@@ -107,36 +107,49 @@ def test_notion_database(api_key, db_id, db_name):
         print(f"   ❌ 连接失败: {e}")
         return False
 
-def test_anthropic_api(api_key):
+def test_anthropic_api(config_anthropic):
     """测试Anthropic API连接"""
     print("\n🤖 测试Anthropic API...")
-    
+
+    api_key = config_anthropic.get('api_key', '')
+    base_url = config_anthropic.get('base_url', '')
+    model = config_anthropic.get('model', 'claude-sonnet-4-20250514')
+
     if not api_key:
         print("   ❌ 未配置Anthropic API Key")
         return False
-    
-    if not api_key.startswith('sk-ant-'):
-        print(f"   ⚠️  API Key格式可能不正确（应该以'sk-ant-'开头）")
-    
+
+    # 检查是否使用自定义base_url（如阿里云）
+    if base_url:
+        print(f"   ℹ️  使用自定义API端点: {base_url}")
+        print(f"   ℹ️  使用模型: {model}")
+    elif not api_key.startswith('sk-ant-'):
+        print(f"   ⚠️  API Key格式可能不正确（官方应该以'sk-ant-'开头）")
+
     try:
         import anthropic
-        
-        client = anthropic.Anthropic(api_key=api_key)
-        
+
+        # 支持自定义base_url
+        client_config = {'api_key': api_key}
+        if base_url:
+            client_config['base_url'] = base_url
+
+        client = anthropic.Anthropic(**client_config)
+
         # 发送简单测试请求
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=model,
             max_tokens=10,
             messages=[{"role": "user", "content": "Hi"}]
         )
-        
+
         if response.content:
             print("   ✅ Anthropic API连接成功")
             return True
         else:
             print("   ❌ Anthropic API响应异常")
             return False
-            
+
     except Exception as e:
         error_msg = str(e)
         if 'authentication' in error_msg.lower() or 'api key' in error_msg.lower():
@@ -215,7 +228,7 @@ def main():
         )
     
     # Anthropic API
-    results['anthropic_api'] = test_anthropic_api(config['anthropic']['api_key'])
+    results['anthropic_api'] = test_anthropic_api(config['anthropic'])
     
     # Crossref API
     results['crossref_api'] = test_crossref()

@@ -19,6 +19,17 @@ def load_config():
         with open('config.json', 'r') as f:
             return json.load(f)
     else:
+        # 从环境变量读取配置
+        anthropic_config = {
+            'api_key': os.getenv('ANTHROPIC_API_KEY', '')
+        }
+
+        # 支持自定义 base_url 和 model（可选）
+        if os.getenv('ANTHROPIC_BASE_URL'):
+            anthropic_config['base_url'] = os.getenv('ANTHROPIC_BASE_URL')
+        if os.getenv('ANTHROPIC_MODEL'):
+            anthropic_config['model'] = os.getenv('ANTHROPIC_MODEL')
+
         return {
             'notion': {
                 'api_key': os.getenv('NOTION_API_KEY', ''),
@@ -28,9 +39,7 @@ def load_config():
                     'summaries': os.getenv('NOTION_DB_SUMMARIES', '')
                 }
             },
-            'anthropic': {
-                'api_key': os.getenv('ANTHROPIC_API_KEY', '')
-            }
+            'anthropic': anthropic_config
         }
 
 CONFIG = load_config()
@@ -43,7 +52,15 @@ if not CONFIG['anthropic']['api_key']:
 
 # 初始化客户端
 cr = Crossref()
-claude_client = anthropic.Anthropic(api_key=CONFIG['anthropic']['api_key'])
+
+# 初始化Claude客户端（支持自定义base_url）
+anthropic_config = {'api_key': CONFIG['anthropic']['api_key']}
+if 'base_url' in CONFIG['anthropic']:
+    anthropic_config['base_url'] = CONFIG['anthropic']['base_url']
+claude_client = anthropic.Anthropic(**anthropic_config)
+
+# 获取模型名称（使用配置中的模型或默认值）
+CLAUDE_MODEL = CONFIG['anthropic'].get('model', 'claude-sonnet-4-20250514')
 
 NOTION_VERSION = "2022-06-28"
 NOTION_HEADERS = {
@@ -313,11 +330,11 @@ def translate_and_extract(title: str, abstract: str) -> Dict[str, str]:
 2. 直接输出中文标题，不要其他内容"""
         
         response = claude_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=CLAUDE_MODEL,
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}]
         )
-        
+
         title_cn = response.content[0].text.strip()
         
         return {
@@ -350,7 +367,7 @@ def translate_and_extract(title: str, abstract: str) -> Dict[str, str]:
     
     try:
         response = claude_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=CLAUDE_MODEL,
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -399,11 +416,11 @@ def generate_issue_summary(articles: List[Dict]) -> str:
     
     try:
         response = claude_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=CLAUDE_MODEL,
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}]
         )
-        
+
         return response.content[0].text.strip()
         
     except Exception as e:
