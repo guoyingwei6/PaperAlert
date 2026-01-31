@@ -1,60 +1,124 @@
-# 期刊订阅系统
+# PaperAlert - 学术期刊订阅系统
 
-自动抓取学术期刊最新文章，翻译摘要，提取研究信息，推送到Notion数据库。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-## 功能特性
+自动追踪学术期刊最新文章，AI 翻译摘要，智能推送到 Notion 数据库。让你轻松掌握领域内的最新研究进展。
 
-- ✅ 自动从Crossref抓取期刊文章元数据
-- ✅ 使用Claude API翻译标题和摘要
-- ✅ 智能提取研究动机、问题和方法
-- ✅ 生成每期期刊小结
-- ✅ 自动推送到Notion数据库
-- ✅ 支持定时运行和状态追踪
+## ✨ 功能特性
 
-## 系统架构
+- 🔄 **自动化抓取** - 从 Crossref 数据库自动获取期刊最新文章
+- 🌐 **AI 智能翻译** - 使用 Claude AI 翻译标题和摘要为中文
+- 📊 **Notion 集成** - 自动推送到 Notion 数据库，方便管理和阅读
+- 📈 **增量更新** - 智能记录更新历史，避免重复抓取
+- ⏰ **定时运行** - 支持 GitHub Actions 自动化，无需本地服务器
+- 🎯 **灵活订阅** - 支持订阅任意数量的学术期刊
+- 📝 **期刊小结** - 自动生成每期期刊的研究趋势总结
+- 💰 **成本优化** - 仅翻译核心内容，大幅降低 API 费用
 
-```
-Crossref API → Python脚本 → Claude API → Notion API
-     ↓              ↓            ↓           ↓
-  文章元数据     翻译提取      内容生成    数据存储
-```
+## 🎬 快速开始
 
-## 前置准备
+### 前置要求
 
-### 1. Notion配置
+1. **Notion 账号** - [免费注册](https://www.notion.so/)
+2. **AI API Key** - 支持以下任一服务：
+   - [Anthropic Claude](https://console.anthropic.com/)（推荐）
+   - [阿里云百炼](https://dashscope.aliyuncs.com/)（国内访问更快）
+3. **GitHub 账号**（用于自动化运行，可选）
 
-已为你创建了三个数据库：
-- **期刊订阅表**: https://www.notion.so/c98ca17d606b4028a74e3c513f101921
-- **文章推送库**: https://www.notion.so/9dd8fb5ad12e49bbbbedfc91c864cdbd
-- **期刊小结库**: https://www.notion.so/b053e2cae8b64b3e8d258c79d2542fc5
+### 安装步骤
 
-需要获取Notion API Key：
-1. 访问 https://www.notion.so/my-integrations
-2. 点击 "New integration"
-3. 命名为 "Journal Subscription"
-4. 复制 "Internal Integration Token"
-5. 在每个数据库页面点击右上角 "..." → "Add connections" → 选择你的integration
-
-### 2. Anthropic API Key
-
-1. 访问 https://console.anthropic.com/
-2. 在 API Keys 页面创建新密钥
-3. 复制密钥
-
-### 3. Python环境
-
-要求 Python 3.8+
+#### 1️⃣ 克隆仓库
 
 ```bash
-# 安装依赖
+git clone https://github.com/你的用户名/PaperAlert.git
+cd PaperAlert
+```
+
+#### 2️⃣ 安装依赖
+
+```bash
 pip install -r requirements.txt
 ```
 
-## 配置
+#### 3️⃣ 配置 Notion
 
-### 方法1：使用配置文件（推荐）
+##### 3.1 创建 Notion Integration
 
-复制模板并填写：
+1. 访问 [Notion Integrations](https://www.notion.so/my-integrations)
+2. 点击 **+ New integration**
+3. 设置名称为 `PaperAlert`，选择关联的工作区
+4. 复制生成的 **Internal Integration Token**（以 `ntn_` 或 `secret_` 开头）
+
+##### 3.2 创建 Notion 数据库
+
+在 Notion 中创建以下三个数据库（可以在同一个页面下）：
+
+**📚 期刊订阅表**
+
+| 属性名 | 类型 | 说明 |
+|--------|------|------|
+| Journal | 标题(Title) | 期刊名称 |
+| 是否启用订阅 | 复选框(Checkbox) | 控制是否抓取 |
+| Online ISSN | 文本(Text) | 在线ISSN |
+| Print ISSN | 文本(Text) | 印刷ISSN（备用） |
+| 起始抓取日期 | 日期(Date) | 首次抓取起始日期 |
+| 最后更新日期 | 日期(Date) | 上次成功抓取日期 |
+| 最近处理日期 | 日期(Date) | 最近运行日期 |
+| 最近处理状态 | 文本(Text) | 运行状态信息 |
+
+**📄 文章推送库**
+
+| 属性名 | 类型 | 说明 |
+|--------|------|------|
+| Title | 标题(Title) | 英文标题 |
+| 标题 | 文本(Text) | 中文标题 |
+| Journal | 文本(Text) | 期刊名 |
+| Volume | 文本(Text) | 卷号 |
+| Issue | 文本(Text) | 期号 |
+| Year | 数字(Number) | 年份 |
+| Year-Month | 文本(Text) | 年月 |
+| YearQuarter | 文本(Text) | 年季度 |
+| Author | 文本(Text) | 作者 |
+| Abstract | 文本(Text) | 英文摘要 |
+| 摘要 | 文本(Text) | 中文摘要 |
+| Link | URL | 文章链接 |
+| 上传日期 | 日期(Date) | 推送日期 |
+
+**📋 期刊小结库**
+
+| 属性名 | 类型 | 说明 |
+|--------|------|------|
+| Journal | 标题(Title) | 期刊名 |
+| Volume | 文本(Text) | 卷号 |
+| Issue | 文本(Text) | 期号 |
+| Year | 数字(Number) | 年份 |
+| 文章数量 | 数字(Number) | 文章数 |
+| 小结 | 文本(Text) | AI小结 |
+| 小结生成日期 | 日期(Date) | 生成日期 |
+
+##### 3.3 连接 Integration 到数据库
+
+对每个数据库：
+1. 点击数据库右上角 `...` 按钮
+2. 选择 **Add connections**
+3. 找到并选择你的 `PaperAlert` integration
+
+##### 3.4 获取 Database ID
+
+在 Notion 中打开数据库，复制浏览器地址栏中的 ID：
+
+```
+https://www.notion.so/workspace/DatabaseName-c98ca17d606b4028a74e3c513f101921?v=...
+                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                          这部分就是 Database ID
+```
+
+#### 4️⃣ 配置 API Keys
+
+##### 方式一：配置文件（本地运行）
+
+复制模板文件：
 
 ```bash
 cp config.template.json config.json
@@ -65,260 +129,286 @@ cp config.template.json config.json
 ```json
 {
   "notion": {
-    "api_key": "secret_xxxxxxxxxxxxx",
+    "api_key": "ntn_你的Notion_API_Key",
     "databases": {
-      "subscriptions": "bae82198-66b5-4ec5-a789-6839b1fc8e6f",
-      "articles": "88b9dc7d-f5fc-4bbb-9fbe-940788a24d2e",
-      "summaries": "0efabfe0-a199-4892-bf2c-9cd56eae7619"
+      "subscriptions": "期刊订阅表的Database_ID",
+      "articles": "文章推送库的Database_ID",
+      "summaries": "期刊小结库的Database_ID"
     }
   },
   "anthropic": {
-    "api_key": "sk-ant-xxxxxxxxxxxxx"
+    "api_key": "sk-ant-你的Anthropic_API_Key"
   }
 }
 ```
 
-### 方法2：使用环境变量
+**使用阿里云百炼（可选）：**
 
-```bash
-export NOTION_API_KEY="secret_xxxxxxxxxxxxx"
-export ANTHROPIC_API_KEY="sk-ant-xxxxxxxxxxxxx"
-export NOTION_DB_SUBSCRIPTIONS="bae82198-66b5-4ec5-a789-6839b1fc8e6f"
-export NOTION_DB_ARTICLES="88b9dc7d-f5fc-4bbb-9fbe-940788a24d2e"
-export NOTION_DB_SUMMARIES="0efabfe0-a199-4892-bf2c-9cd56eae7619"
+```json
+{
+  "notion": { ... },
+  "anthropic": {
+    "api_key": "sk-你的阿里云API_Key",
+    "base_url": "https://dashscope.aliyuncs.com/apps/anthropic",
+    "model": "qwen3-max-2026-01-23"
+  }
+}
 ```
 
-## 使用方法
+##### 方式二：环境变量（GitHub Actions）
 
-### 第一步：添加期刊订阅
+在 GitHub 仓库设置中配置 Secrets：
 
-在Notion的"期刊订阅表"中添加期刊：
+1. 进入仓库 **Settings** → **Secrets and variables** → **Actions**
+2. 点击 **New repository secret** 添加以下变量：
 
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| Journal | 期刊名 | Nature Genetics |
-| 是否启用订阅 | 勾选启用 | ✅ |
-| Online ISSN | 在线ISSN | 1546-1718 |
-| Print ISSN | 印刷ISSN（备选） | 1061-4036 |
-| 起始抓取日期 | 从何时开始抓取 | 2024-01-01 |
+| Secret 名称 | 值 |
+|------------|-----|
+| `NOTION_API_KEY` | 你的 Notion API Key |
+| `NOTION_DB_SUBSCRIPTIONS` | 期刊订阅表 ID |
+| `NOTION_DB_ARTICLES` | 文章推送库 ID |
+| `NOTION_DB_SUMMARIES` | 期刊小结库 ID |
+| `ANTHROPIC_API_KEY` | 你的 AI API Key |
+| `ANTHROPIC_BASE_URL` | （可选）自定义 API 端点 |
+| `ANTHROPIC_MODEL` | （可选）自定义模型名称 |
 
-**如何查找ISSN**：
-- 访问期刊官网
-- 或在 https://jcr.clarivate.com/jcr/home 搜索
+详细配置说明请查看 [GITHUB_ACTIONS_SETUP.md](GITHUB_ACTIONS_SETUP.md)
 
-### 第二步：运行脚本
+## 📖 使用指南
+
+### 本地运行
+
+#### 1. 添加期刊订阅
+
+在 Notion 的"期刊订阅表"中添加期刊：
+
+| Journal | 是否启用订阅 | Online ISSN | 起始抓取日期 |
+|---------|-------------|-------------|-------------|
+| Nature Genetics | ✅ | 1546-1718 | 2024-01-01 |
+| Cell | ✅ | 1097-4172 | 2024-01-01 |
+
+**如何查找期刊 ISSN？**
+- 访问期刊官网查看
+- 在 [JCR (Journal Citation Reports)](https://jcr.clarivate.com/) 搜索
+- Google 搜索 "期刊名 + ISSN"
+
+#### 2. 测试配置
 
 ```bash
-# 手动运行一次
+python test_config.py
+```
+
+确保所有测试通过后再运行主程序。
+
+#### 3. 运行主程序
+
+```bash
 python journal_subscription_v2.py
 ```
 
-运行过程：
-1. 读取启用的期刊订阅
-2. 从Crossref抓取文章元数据
-3. 调用Claude翻译和提取信息
-4. 推送到Notion文章库
-5. 生成期刊小结
-6. 更新订阅状态
+程序将：
+1. ✅ 读取所有启用订阅的期刊
+2. ✅ 从 Crossref 抓取新文章
+3. ✅ 使用 AI 翻译标题和摘要
+4. ✅ 推送到 Notion 文章库
+5. ✅ 生成期刊小结
+6. ✅ 更新订阅状态
 
-### 第三步：查看结果
+### GitHub Actions 自动化
 
-在Notion中查看：
-- **文章推送库**：所有文章详情（含中文翻译）
-- **期刊小结库**：每期期刊总结
-- **期刊订阅表**：更新状态和日期
+项目已配置 GitHub Actions，每周一早上 8 点自动运行。
 
-## 定时运行（可选）
+#### 启用自动化
 
-### 使用 cron（Linux/Mac）
+1. **Fork 本仓库**到你的 GitHub 账号
+2. **配置 Secrets**（参见上方"配置 API Keys"）
+3. **启用 Actions**：
+   - 进入 **Actions** 标签
+   - 点击 **I understand my workflows, go ahead and enable them**
 
-```bash
-# 编辑crontab
-crontab -e
+#### 手动触发
 
-# 添加定时任务（每周一上午9点）
-0 9 * * 1 cd /path/to/journal_subscription && /usr/bin/python3 journal_subscription_v2.py >> logs/cron.log 2>&1
-```
+1. 进入 **Actions** 标签
+2. 选择 **期刊订阅自动同步**
+3. 点击 **Run workflow** → **Run workflow**
 
-### 使用 GitHub Actions
+#### 修改运行频率
 
-创建 `.github/workflows/journal-sync.yml`：
+编辑 `.github/workflows/journal-sync.yml`：
 
 ```yaml
-name: 期刊订阅同步
-
 on:
   schedule:
-    - cron: '0 1 * * 1'  # 每周一北京时间9点
-  workflow_dispatch:  # 手动触发
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: 设置Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      
-      - name: 安装依赖
-        run: pip install -r requirements.txt
-      
-      - name: 运行同步
-        env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          NOTION_DB_SUBSCRIPTIONS: ${{ secrets.NOTION_DB_SUBSCRIPTIONS }}
-          NOTION_DB_ARTICLES: ${{ secrets.NOTION_DB_ARTICLES }}
-          NOTION_DB_SUMMARIES: ${{ secrets.NOTION_DB_SUMMARIES }}
-        run: python journal_subscription_v2.py
+    # 每周一早上8点 (UTC 00:00 = 北京时间 08:00)
+    - cron: '0 0 * * 1'
 ```
 
-在GitHub仓库设置 Secrets：
-- `NOTION_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `NOTION_DB_SUBSCRIPTIONS`
-- `NOTION_DB_ARTICLES`
-- `NOTION_DB_SUMMARIES`
+Cron 表达式示例：
+- `0 0 * * 1` - 每周一早上 8 点
+- `0 0 * * *` - 每天早上 8 点
+- `0 0 1 * *` - 每月1号早上 8 点
 
-## 数据库字段说明
+## 🔧 工作原理
 
-### 期刊订阅表
+### 系统架构
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| Journal | 标题 | 期刊名称 |
-| 是否启用订阅 | 复选框 | 控制是否抓取该期刊 |
-| Online ISSN | 文本 | 在线ISSN（主要） |
-| Print ISSN | 文本 | 印刷ISSN（备用） |
-| 起始抓取日期 | 日期 | 开始抓取的日期 |
-| 最近处理日期 | 日期 | 系统最后运行时间 |
-| 最近处理状态 | 文本 | 运行结果（成功/失败） |
-| 最后更新日期 | 日期 | 最后一次抓到新文章的时间 |
+```
+┌─────────────┐      ┌──────────────┐      ┌─────────────┐
+│  Crossref   │─────>│    Python    │─────>│  Claude AI  │
+│  Database   │      │    脚本       │      │   翻译服务   │
+└─────────────┘      └──────────────┘      └─────────────┘
+                            │
+                            ▼
+                     ┌─────────────┐
+                     │   Notion    │
+                     │   Database  │
+                     └─────────────┘
+```
 
-### 文章推送库
+### 增量更新机制
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| Title | 标题 | 英文标题 |
-| 标题 | 文本 | 中文标题（AI翻译） |
-| Journal | 文本 | 期刊名 |
-| Volume/Issue | 文本 | 卷号/期号 |
-| Year | 数字 | 年份 |
-| Year-Month | 文本 | 年-月 |
-| YearQuarter | 文本 | 年-季度 |
-| Author | 文本 | 作者列表 |
-| Abstract | 文本 | 英文摘要 |
-| 摘要 | 文本 | 中文摘要（AI翻译） |
-| 研究动机和问题 | 文本 | AI提取 |
-| 研究方法 | 文本 | AI提取 |
-| Link | URL | 原文链接 |
-| 上传日期 | 日期 | 推送日期 |
+系统采用智能增量更新：
 
-### 期刊小结库
+1. **首次运行**：从"起始抓取日期"开始抓取
+2. **后续运行**：从"最后更新日期"开始抓取
+3. **状态更新**：
+   - ✅ 成功推送文章 → 更新"最后更新日期"
+   - ⚠️ 无新文章 → 不更新"最后更新日期"
+   - ❌ 推送失败 → 不更新"最后更新日期"
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| Journal | 标题 | 期刊名 |
-| Volume/Issue | 文本 | 卷号/期号 |
-| Year | 数字 | 年份 |
-| 文章数量 | 数字 | 该期文章数 |
-| 小结 | 文本 | AI生成的小结 |
-| 小结生成日期 | 日期 | 生成日期 |
+这样可以避免重复抓取，节省 API 调用和时间。
 
-## 常见问题
+## ❓ 常见问题
 
-### Q: 抓不到文章怎么办？
+### 找不到文章怎么办？
 
-**A:** 检查以下几点：
-1. ISSN是否正确（尝试Online和Print两个）
-2. 起始日期是否太久远（建议最多回溯6个月）
-3. 该期刊是否在Crossref数据库中
-4. 查看"最近处理状态"的错误信息
+可能的原因和解决方案：
 
-### Q: 翻译质量如何？
+1. **ISSN 错误** - 检查 Online ISSN 和 Print ISSN 都试一下
+2. **日期太久远** - 建议起始日期设置为最近 6 个月内
+3. **期刊不在 Crossref** - 有些期刊可能不收录在 Crossref 数据库
+4. **查看日志** - 检查"最近处理状态"中的错误信息
 
-**A:** 使用Claude Sonnet 4，学术翻译质量很高。如需调整：
-- 修改 `translate_and_extract()` 函数中的prompt
-- 可以增加专业术语词典
+### 如何降低 API 费用？
 
-### Q: 如何添加自定义字段？
+本项目已优化为仅翻译标题和摘要，成本估算：
 
-**A:** 在Notion数据库中：
-1. 直接添加新属性
-2. **不要修改**现有属性的名称和类型
-3. 脚本会忽略自定义字段，不影响运行
+- **Crossref API**：完全免费
+- **Claude API**：每篇文章约 500-1000 tokens
+  - 订阅 10 个期刊，每周约 $1-3
+  - 订阅 30 个期刊，每周约 $3-8
 
-### Q: API调用费用？
+### 可以订阅多少期刊？
 
-**A:** 
-- Crossref API：免费
-- Claude API：按token计费
-  - 翻译每篇文章约 500-2000 tokens
-  - 每期小结约 500 tokens
-  - 估算：订阅10个期刊，每周约$2-5
-
-### Q: 可以订阅多少期刊？
-
-**A:** 
 - 技术上无限制
-- 建议：10-30个（考虑运行时间和API费用）
-- 单次运行时间：每个期刊约1-3分钟
+- 建议 10-30 个期刊（平衡时间和成本）
+- 单个期刊处理时间约 1-3 分钟
 
-## 高级配置
+### 如何自定义翻译？
 
-### 修改抓取数量
+修改 `journal_subscription_v2.py` 中的 `translate_and_extract()` 函数：
 
-在 `fetch_articles_by_issn()` 函数中：
+```python
+prompt = f"""请将以下学术文章的标题和摘要翻译成中文：
+
+标题：{title}
+摘要：{abstract}
+
+要求：
+1. 翻译准确、符合学术规范
+2. 保留专业术语
+3. 符合中文表达习惯
+
+..."""
+```
+
+### GitHub Actions 运行失败？
+
+1. **检查 Secrets** - 确保所有必需的 Secrets 都已配置
+2. **查看日志** - 在 Actions 标签页查看详细错误信息
+3. **Notion 连接** - 确认数据库已添加 Integration 连接
+4. **API 额度** - 检查 API Key 是否有效、是否有足够额度
+
+## 🛠️ 高级配置
+
+### 修改抓取数量限制
+
+在 `journal_subscription_v2.py` 的 `fetch_articles_by_issn()` 函数中：
 
 ```python
 works = cr.works(
     filter={...},
-    limit=100,  # 改为需要的数量，最大1000
+    limit=100,  # 修改为需要的数量，最大 1000
     ...
 )
 ```
 
-### 自定义翻译prompt
+### 添加自定义 Notion 字段
 
-修改 `translate_and_extract()` 函数中的prompt，例如：
+在 Notion 数据库中：
+1. 直接添加新属性列
+2. **不要**修改现有属性的名称和类型
+3. 脚本会自动忽略自定义字段
 
-```python
-prompt = f"""你是一个专业的{领域}学术翻译专家...
-（根据你的研究领域定制）
-"""
+### 使用其他 AI 服务
+
+只需在配置文件中修改 `base_url` 和 `model`：
+
+```json
+{
+  "anthropic": {
+    "api_key": "你的API_Key",
+    "base_url": "https://your-ai-service.com/v1",
+    "model": "your-model-name"
+  }
+}
 ```
 
-### 添加邮件通知
+## 📊 技术栈
 
-在 `main()` 函数末尾添加：
+- **Python 3.8+**
+- **[habanero](https://github.com/sckott/habanero)** - Crossref API 客户端
+- **[anthropic](https://github.com/anthropics/anthropic-sdk-python)** - Claude API SDK
+- **[requests](https://requests.readthedocs.io/)** - HTTP 请求库
+- **Notion API** - Notion 数据库操作
 
-```python
-import smtplib
-from email.mime.text import MIMEText
+## 🤝 贡献指南
 
-def send_notification(summary):
-    # 配置SMTP...
-    pass
-```
+欢迎贡献代码、报告问题或提出建议！
 
-## 技术栈
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
 
-- Python 3.8+
-- [habanero](https://github.com/sckott/habanero) - Crossref API客户端
-- [anthropic](https://github.com/anthropics/anthropic-sdk-python) - Claude API
-- [requests](https://requests.readthedocs.io/) - Notion API调用
+## 📝 更新日志
 
-## 许可证
+### v2.0.0 (2026-01-31)
 
-MIT License
+- ✨ 重构为使用 Notion 官方 API
+- 🚀 添加 GitHub Actions 自动化支持
+- 📈 实现增量更新机制
+- 💰 优化 AI 翻译，仅翻译标题和摘要
+- 🔐 支持环境变量配置，保护敏感信息
+- 📖 完善文档和配置指南
 
-## 贡献
+## 📄 许可证
 
-欢迎提交Issue和Pull Request！
+本项目采用 [MIT](LICENSE) 许可证。
 
-## 致谢
+## 🙏 致谢
 
-灵感来源于原Lucid期刊订阅项目。
+- 灵感来源于学术订阅需求
+- 感谢 Crossref 提供免费的学术文献数据库
+- 感谢 Anthropic 提供强大的 AI 翻译能力
+
+## 📧 联系方式
+
+如有问题或建议，欢迎：
+- 提交 [Issue](https://github.com/你的用户名/PaperAlert/issues)
+- 发起 [Discussion](https://github.com/你的用户名/PaperAlert/discussions)
+
+---
+
+⭐ 如果这个项目对你有帮助，欢迎 Star 支持！
