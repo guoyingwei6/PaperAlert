@@ -117,7 +117,7 @@ def notion_update_page(page_id: str, properties: Dict) -> bool:
 def read_subscriptions() -> List[Dict]:
     """读取启用的期刊订阅"""
     db_id = CONFIG['notion']['databases']['subscriptions']
-    
+
     # 查询启用订阅的期刊
     filter_obj = {
         "property": "是否启用订阅",
@@ -125,24 +125,25 @@ def read_subscriptions() -> List[Dict]:
             "equals": True
         }
     }
-    
+
     pages = notion_query_database(db_id, filter_obj)
-    
+
     subscriptions = []
     for page in pages:
         props = page['properties']
-        
+
         sub = {
             'page_id': page['id'],
             'Journal': get_notion_title(props.get('Journal', {})),
             'Online ISSN': get_notion_rich_text(props.get('Online ISSN', {})),
             'Print ISSN': get_notion_rich_text(props.get('Print ISSN', {})),
             '起始抓取日期': get_notion_date(props.get('起始抓取日期', {})),
+            '最后更新日期': get_notion_date(props.get('最后更新日期', {})),
             '是否启用订阅': True
         }
-        
+
         subscriptions.append(sub)
-    
+
     return subscriptions
 
 def write_article(article_data: Dict) -> bool:
@@ -425,23 +426,26 @@ def process_journal(journal_data: Dict):
     journal_name = journal_data['Journal']
     page_id = journal_data['page_id']
     issn = journal_data.get('Online ISSN') or journal_data.get('Print ISSN')
-    from_date = journal_data['起始抓取日期']
-    
+
+    # 优先使用"最后更新日期"，如果没有则使用"起始抓取日期"
+    from_date = journal_data.get('最后更新日期') or journal_data.get('起始抓取日期')
+
     if not issn:
         print(f"期刊 {journal_name} 缺少ISSN，跳过")
         update_subscription_status(page_id, journal_name, "错误：缺少ISSN")
         return
-    
+
     if not from_date:
         from_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-    
+
     print(f"\n处理期刊: {journal_name} (ISSN: {issn})")
     print(f"抓取日期: {from_date} 至今")
-    
+
     articles = fetch_articles_by_issn(issn, from_date)
-    
+
     if not articles:
         print(f"  未找到新文章")
+        # 没有新文章，只更新处理日期和状态，不更新"最后更新日期"
         update_subscription_status(page_id, journal_name, "成功：无新文章")
         return
     
@@ -490,9 +494,16 @@ def process_journal(journal_data: Dict):
             }
             
             write_summary(summary_data)
-    
+
+    # 生成状态信息
     status = f"成功：推送{success_count}篇文章"
-    update_subscription_status(page_id, journal_name, status, datetime.now().strftime("%Y-%m-%d"))
+
+    # 只有成功推送文章时才更新"最后更新日期"
+    if success_count > 0:
+        update_subscription_status(page_id, journal_name, status, datetime.now().strftime("%Y-%m-%d"))
+    else:
+        # 找到文章但推送失败，不更新"最后更新日期"
+        update_subscription_status(page_id, journal_name, "失败：找到文章但推送失败")
 
 def main():
     """主函数"""
