@@ -1,0 +1,20 @@
+# 期刊订阅系统配置文件
+# 复制此文件为 config.json 并填入实际值
+
+{
+  "notion": {
+    "api_key": "YOUR_NOTION_API_KEY",
+    "databases": {
+      "subscriptions": "bae82198-66b5-4ec5-a789-6839b1fc8e6f",
+      "articles": "88b9dc7d-f5fc-4bbb-9fbe-940788a24d2e",
+      "summaries": "0efabfe0-a199-4892-bf2c-9cd56eae7619"
+    }
+  },
+  "anthropic": {
+    "api_key": "YOUR_ANTHROPIC_API_KEY"
+  },
+  "schedule": {
+    "cron": "0 9 * * 1",
+    "comment": "每周一上午9点运行"
+  }
+}
