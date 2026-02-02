@@ -6,6 +6,7 @@
 
 import os
 import json
+import re
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import anthropic
@@ -107,12 +108,26 @@ def notion_create_page(database_id: str, properties: Dict) -> bool:
 def notion_update_page(page_id: str, properties: Dict) -> bool:
     """更新Notion页面"""
     url = f"https://api.notion.com/v1/pages/{page_id}"
-    
+
     payload = {"properties": properties}
-    
+
     response = requests.patch(url, headers=NOTION_HEADERS, json=payload)
-    
+
     return response.status_code == 200
+
+def notion_archive_page(page_id: str) -> bool:
+    """归档Notion页面（移到回收站）"""
+    url = f"https://api.notion.com/v1/pages/{page_id}"
+
+    payload = {"archived": True}
+
+    response = requests.patch(url, headers=NOTION_HEADERS, json=payload)
+
+    if response.status_code != 200:
+        print(f"归档页面失败: {response.text}")
+        return False
+
+    return True
 
 def read_subscriptions() -> List[Dict]:
     """读取启用的期刊订阅"""
@@ -216,8 +231,25 @@ def get_notion_date(prop: Dict) -> Optional[str]:
         return prop['date']['start']
     return None
 
+# ============== 文本清理辅助函数 ==============
+
+def clean_html_tags(text: str) -> str:
+    """清理文本中的 HTML/XML 标签"""
+    if not text:
+        return ''
+
+    # 移除所有 XML/HTML 标签 (如 <jats:p>, <jats:title> 等)
+    text = re.sub(r'<[^>]+>', '', text)
+
+    # 清理多余的空白字符
+    text = re.sub(r'\s+', ' ', text)
+
+    # 去除首尾空格
+    text = text.strip()
+
+    return text
+
 # ============== Crossref API 函数 ==============
-# (保持之前的实现不变)
 
 def fetch_articles_by_issn(issn: str, from_date: str, until_date: Optional[str] = None) -> List[Dict]:
     """根据ISSN抓取文章"""
@@ -253,7 +285,7 @@ def parse_crossref_item(item: Dict) -> Optional[Dict]:
     """解析Crossref返回的单篇文章数据"""
     try:
         title = item.get('title', [''])[0] if 'title' in item else ''
-        
+
         authors = []
         if 'author' in item:
             for author in item['author'][:3]:
@@ -263,8 +295,9 @@ def parse_crossref_item(item: Dict) -> Optional[Dict]:
         author_str = ', '.join(authors) if authors else ''
         if len(item.get('author', [])) > 3:
             author_str += ' et al.'
-        
-        abstract = item.get('abstract', '')
+
+        # 清理 abstract 中的 HTML/XML 标签
+        abstract = clean_html_tags(item.get('abstract', ''))
         
         pub_date = None
         if 'published-print' in item:
@@ -419,6 +452,48 @@ def generate_issue_summary(articles: List[Dict]) -> str:
         print(f"生成小结失败: {e}")
         return f"本期共收录{len(articles)}篇文章。"
 
+# ============== 数据清理函数 ==============
+
+def clean_old_articles(days: int = 30):
+    """清理超过指定天数的文章记录"""
+    db_id = CONFIG['notion']['databases']['articles']
+
+    # 计算截止日期
+    cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    print(f"\n开始清理 {cutoff_date} 之前的文章记录...")
+
+    # 查询超过指定天数的文章
+    filter_obj = {
+        "property": "上传日期",
+        "date": {
+            "before": cutoff_date
+        }
+    }
+
+    old_articles = notion_query_database(db_id, filter_obj)
+
+    if not old_articles:
+        print("  没有需要清理的旧文章")
+        return
+
+    print(f"  找到 {len(old_articles)} 篇旧文章需要清理")
+
+    success_count = 0
+    for page in old_articles:
+        page_id = page['id']
+        # 尝试获取文章标题用于日志
+        try:
+            title = get_notion_title(page['properties'].get('Title', {}))
+            print(f"  归档: {title[:50]}...")
+        except:
+            print(f"  归档页面: {page_id[:8]}...")
+
+        if notion_archive_page(page_id):
+            success_count += 1
+
+    print(f"  成功归档 {success_count}/{len(old_articles)} 篇文章")
+
 # ============== 主流程 ==============
 
 def process_journal(journal_data: Dict):
@@ -511,22 +586,28 @@ def main():
     print("期刊订阅系统 - 开始运行")
     print(f"运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
-    
+
+    # 先清理超过30天的旧文章
+    try:
+        clean_old_articles(days=30)
+    except Exception as e:
+        print(f"清理旧文章失败: {e}")
+
     subscriptions = read_subscriptions()
-    
+
     if not subscriptions:
         print("未找到启用的期刊订阅")
         return
-    
-    print(f"找到 {len(subscriptions)} 个启用的订阅")
-    
+
+    print(f"\n找到 {len(subscriptions)} 个启用的订阅")
+
     for sub in subscriptions:
         try:
             process_journal(sub)
         except Exception as e:
             print(f"处理期刊失败: {e}")
             continue
-    
+
     print("\n" + "=" * 60)
     print("运行完成")
     print("=" * 60)
