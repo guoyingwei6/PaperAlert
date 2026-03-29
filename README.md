@@ -131,7 +131,7 @@ pip install -r requirements.txt
 cp config.template.json config.json
 ```
 
-编辑 `config.json`，填入你的 API Key 和 Database ID：
+编辑 `config.json`，填入你的 API Key 和 Database ID（七个字段全部必填）：
 
 ```json
 {
@@ -144,20 +144,21 @@ cp config.template.json config.json
     }
   },
   "anthropic": {
-    "api_key": "sk-ant-你的API_Key"
+    "api_key": "sk-ant-你的API_Key",
+    "base_url": "https://api.anthropic.com/v1",
+    "model": "claude-sonnet-4-20250514"
   }
 }
 ```
 
-使用其他 OpenAI 兼容服务时，额外指定 `base_url` 和 `model`：
+使用其他兼容服务时，替换 `base_url` 和 `model` 即可，例如 SiliconFlow：
 
 ```json
 {
-  "notion": { "..." },
   "anthropic": {
-    "api_key": "sk-你的API_Key",
-    "base_url": "https://你的服务端点/v1",
-    "model": "your-model-name"
+    "api_key": "sk-你的SiliconFlow_Key",
+    "base_url": "https://api.siliconflow.cn/v1",
+    "model": "Qwen/Qwen3-235B-A22B"
   }
 }
 ```
@@ -201,24 +202,17 @@ python journal_subscription_v2.py
 
 进入你的仓库 **Settings** → **Secrets and variables** → **Actions** → **New repository secret**，逐一添加：
 
-**必需：**
+| Secret 名称 | 填入内容 | 示例 |
+|------------|---------|------|
+| `NOTION_API_KEY` | Notion Integration Token | `ntn_xxxxx` |
+| `NOTION_DB_SUBSCRIPTIONS` | 期刊订阅表 Database ID | `c98ca17d...` |
+| `NOTION_DB_ARTICLES` | 文章推送库 Database ID | `9dd8fb5a...` |
+| `NOTION_DB_SUMMARIES` | 期刊小结库 Database ID | `b053e2ca...` |
+| `ANTHROPIC_API_KEY` | AI 服务的 API Key | `sk-ant-xxxxx` |
+| `ANTHROPIC_BASE_URL` | AI 服务的 API 端点 | `https://api.anthropic.com/v1` |
+| `ANTHROPIC_MODEL` | 使用的模型名称 | `claude-sonnet-4-20250514` |
 
-| Secret 名称 | 填入内容 |
-|------------|---------|
-| `NOTION_API_KEY` | Notion Integration Token |
-| `NOTION_DB_SUBSCRIPTIONS` | 期刊订阅表 Database ID |
-| `NOTION_DB_ARTICLES` | 文章推送库 Database ID |
-| `NOTION_DB_SUMMARIES` | 期刊小结库 Database ID |
-| `ANTHROPIC_API_KEY` | AI 服务的 API Key |
-
-**可选（使用非默认 AI 服务时填写）：**
-
-| Secret 名称 | 填入内容 |
-|------------|---------|
-| `ANTHROPIC_BASE_URL` | 自定义 API 端点，如 `https://api.siliconflow.cn/v1` |
-| `ANTHROPIC_MODEL` | 自定义模型名称，如 `Qwen/Qwen3-235B-A22B` |
-
-> **关于变量命名**：代码底层使用 OpenAI 兼容 SDK，因此可对接任意兼容服务。变量名沿用 `ANTHROPIC_*` 是历史约定，**名称本身不影响实际对接的服务**——只要填入对应服务的 Key 和端点即可。`ANTHROPIC_API_KEY` 为必填项，缺少会直接报错；`ANTHROPIC_BASE_URL` 和 `ANTHROPIC_MODEL` 不填时，默认走 Anthropic 官方 API，使用 `claude-sonnet-4-20250514` 模型。
+> **说明**：七个字段全部必填。代码底层使用 OpenAI 兼容 SDK，变量名沿用 `ANTHROPIC_*` 是历史约定，**名称与实际对接的服务无关**——使用 SiliconFlow、阿里云等任意兼容服务时，直接填入对应的 Key、端点和模型名即可。
 
 #### 3. 启用 Actions
 
@@ -334,7 +328,7 @@ works = cr.works(
 
 ### 使用其他 AI 服务
 
-系统使用 OpenAI 兼容协议，只需在配置文件中修改 `base_url` 和 `model`：
+系统使用 OpenAI 兼容协议，替换 `api_key`、`base_url`、`model` 三个字段即可切换服务：
 
 ```json
 {
@@ -346,7 +340,7 @@ works = cr.works(
 }
 ```
 
-或通过环境变量 `AI_BASE_URL` / `AI_MODEL` 设置（与 `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` 等效）。
+GitHub Actions 中对应的环境变量为 `ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_MODEL`（也支持 `AI_BASE_URL` / `AI_MODEL` 作为别名）。
 
 ## 📊 技术栈
 
