@@ -9,7 +9,7 @@ import json
 import re
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
-import anthropic
+from openai import OpenAI
 from habanero import Crossref
 import requests
 
@@ -26,10 +26,10 @@ def load_config():
         }
 
         # 支持自定义 base_url 和 model（可选）
-        if os.getenv('ANTHROPIC_BASE_URL'):
-            anthropic_config['base_url'] = os.getenv('ANTHROPIC_BASE_URL')
-        if os.getenv('ANTHROPIC_MODEL'):
-            anthropic_config['model'] = os.getenv('ANTHROPIC_MODEL')
+        if os.getenv('AI_BASE_URL') or os.getenv('ANTHROPIC_BASE_URL'):
+            anthropic_config['base_url'] = os.getenv('AI_BASE_URL') or os.getenv('ANTHROPIC_BASE_URL')
+        if os.getenv('AI_MODEL') or os.getenv('ANTHROPIC_MODEL'):
+            anthropic_config['model'] = os.getenv('AI_MODEL') or os.getenv('ANTHROPIC_MODEL')
 
         return {
             'notion': {
@@ -49,19 +49,19 @@ CONFIG = load_config()
 if not CONFIG['notion']['api_key']:
     raise ValueError("请设置Notion API Key")
 if not CONFIG['anthropic']['api_key']:
-    raise ValueError("请设置Anthropic API Key")
+    raise ValueError("请设置 AI API Key (ANTHROPIC_API_KEY 或 AI_API_KEY)")
 
 # 初始化客户端
 cr = Crossref()
 
-# 初始化Claude客户端（支持自定义base_url）
-anthropic_config = {'api_key': CONFIG['anthropic']['api_key']}
+# 初始化 AI 客户端（兼容 OpenAI / SiliconFlow / 任意 OpenAI 兼容 API）
+ai_client_config = {'api_key': CONFIG['anthropic']['api_key']}
 if 'base_url' in CONFIG['anthropic']:
-    anthropic_config['base_url'] = CONFIG['anthropic']['base_url']
-claude_client = anthropic.Anthropic(**anthropic_config)
+    ai_client_config['base_url'] = CONFIG['anthropic']['base_url']
+ai_client = OpenAI(**ai_client_config)
 
 # 获取模型名称（使用配置中的模型或默认值）
-CLAUDE_MODEL = CONFIG['anthropic'].get('model', 'claude-sonnet-4-20250514')
+AI_MODEL = CONFIG['anthropic'].get('model', 'claude-sonnet-4-20250514')
 
 NOTION_VERSION = "2022-06-28"
 NOTION_HEADERS = {
@@ -362,13 +362,13 @@ def translate_and_extract(title: str, abstract: str) -> Dict[str, str]:
 1. 翻译准确、符合学术规范
 2. 直接输出中文标题，不要其他内容"""
 
-        response = claude_client.messages.create(
-            model=CLAUDE_MODEL,
+        response = ai_client.chat.completions.create(
+            model=AI_MODEL,
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}]
         )
 
-        title_cn = response.content[0].text.strip()
+        title_cn = response.choices[0].message.content.strip()
 
         return {
             'title_cn': title_cn,
@@ -393,13 +393,13 @@ def translate_and_extract(title: str, abstract: str) -> Dict[str, str]:
 2. 只输出JSON，不要其他内容"""
 
     try:
-        response = claude_client.messages.create(
-            model=CLAUDE_MODEL,
+        response = ai_client.chat.completions.create(
+            model=AI_MODEL,
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}]
         )
 
-        result_text = response.content[0].text.strip()
+        result_text = response.choices[0].message.content.strip()
         if result_text.startswith('```'):
             result_text = result_text.split('```')[1]
             if result_text.startswith('json'):
@@ -440,13 +440,13 @@ def generate_issue_summary(articles: List[Dict]) -> str:
 - 直接输出小结文本，不要前缀和标题"""
     
     try:
-        response = claude_client.messages.create(
-            model=CLAUDE_MODEL,
+        response = ai_client.chat.completions.create(
+            model=AI_MODEL,
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}]
         )
 
-        return response.content[0].text.strip()
+        return response.choices[0].message.content.strip()
         
     except Exception as e:
         print(f"生成小结失败: {e}")
