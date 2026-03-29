@@ -218,7 +218,7 @@ python journal_subscription_v2.py
 | `ANTHROPIC_BASE_URL` | 自定义 API 端点，如 `https://api.siliconflow.cn/v1` |
 | `ANTHROPIC_MODEL` | 自定义模型名称，如 `Qwen/Qwen3-235B-A22B` |
 
-> 不填 `ANTHROPIC_BASE_URL` 和 `ANTHROPIC_MODEL` 时，默认使用 Anthropic 官方 API 和 `claude-sonnet-4-20250514` 模型。
+> **关于变量命名**：代码底层使用 OpenAI 兼容 SDK，因此可对接任意兼容服务。变量名沿用 `ANTHROPIC_*` 是历史约定，**名称本身不影响实际对接的服务**——只要填入对应服务的 Key 和端点即可。不填时默认走 Anthropic 官方 API，使用 `claude-sonnet-4-20250514` 模型。
 
 #### 3. 启用 Actions
 
