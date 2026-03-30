@@ -3,19 +3,19 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-自动追踪学术期刊最新文章，AI 翻译摘要，智能推送到 Notion 数据库。让你轻松掌握领域内的最新研究进展。
+自动追踪学术期刊最新文章，免费翻译摘要，智能推送到 Notion 数据库。让你轻松掌握领域内的最新研究进展。
 
 ## ✨ 功能特性
 
 - 🔄 **自动化抓取** - 从 Crossref 数据库自动获取期刊最新文章
-- 🌐 **AI 智能翻译** - 支持任意 OpenAI 兼容 API（Claude、Qwen 等），翻译标题和摘要为中文
+- 🌐 **免费翻译** - 使用 Google Translate 自动翻译标题和摘要为中文，零成本无需配置
 - 📊 **Notion 集成** - 自动推送到 Notion 数据库，方便管理和阅读
 - 📈 **增量更新** - 智能记录更新历史，避免重复抓取
+- 🔁 **去重保护** - 推送前自动检查 DOI，防止重复写入
 - 🧹 **自动清理** - 自动归档 30 天前的旧文章，保持数据库整洁
 - ⏰ **定时运行** - 支持 GitHub Actions 自动化，无需本地服务器
 - 🎯 **灵活订阅** - 支持订阅任意数量的学术期刊
-- 📝 **期刊小结** - 自动生成每期期刊的研究趋势总结
-- 💰 **成本优化** - 仅翻译核心内容，大幅降低 API 费用
+- 📝 **期刊小结** - 配置 AI Key 后可自动生成每期研究趋势总结（可选）
 
 ## 🚀 部署方式选择
 
@@ -131,7 +131,7 @@ pip install -r requirements.txt
 cp config.template.json config.json
 ```
 
-编辑 `config.json`，填入你的 API Key 和 Database ID（七个字段全部必填）：
+编辑 `config.json`，Notion 相关字段必填，`anthropic` 部分为**可选**（仅期刊小结功能需要）：
 
 ```json
 {
@@ -151,18 +151,8 @@ cp config.template.json config.json
 }
 ```
 
-使用其他兼容服务时，替换 `base_url` 和 `model` 即可，例如 SiliconFlow：
-
-```json
-{
-  "anthropic": {
-    "api_key": "sk-你的SiliconFlow_Key",
-    "base_url": "https://api.siliconflow.cn/v1",
-    "model": "Qwen/Qwen3-235B-A22B"
-  }
-}
-```
-
+> 不需要期刊小结功能时，可以直接删掉 `anthropic` 整块。翻译使用 Google Translate，不依赖任何 AI Key。
+>
 > `config.json` 已加入 `.gitignore`，不会被提交到 Git。
 
 #### 3. 验证配置
@@ -181,12 +171,13 @@ python journal_subscription_v2.py
 
 程序将依次：
 1. 归档 30 天前的旧文章
-2. 读取所有启用的期刊订阅
-3. 从 Crossref 抓取新文章
-4. 调用 AI 翻译标题和摘要
-5. 推送到 Notion 文章库
-6. 生成每期期刊小结
-7. 更新订阅状态
+2. 加载已有 DOI（用于去重）
+3. 读取所有启用的期刊订阅
+4. 从 Crossref 抓取新文章
+5. Google Translate 翻译标题和摘要
+6. 推送到 Notion 文章库（已存在的 DOI 自动跳过）
+7. 生成每期期刊小结（需配置 AI Key）
+8. 更新订阅状态
 
 ---
 
@@ -202,17 +193,24 @@ python journal_subscription_v2.py
 
 进入你的仓库 **Settings** → **Secrets and variables** → **Actions** → **New repository secret**，逐一添加：
 
+**必填：**
+
 | Secret 名称 | 填入内容 | 示例 |
 |------------|---------|------|
 | `NOTION_API_KEY` | Notion Integration Token | `ntn_xxxxx` |
 | `NOTION_DB_SUBSCRIPTIONS` | 期刊订阅表 Database ID | `c98ca17d...` |
 | `NOTION_DB_ARTICLES` | 文章推送库 Database ID | `9dd8fb5a...` |
 | `NOTION_DB_SUMMARIES` | 期刊小结库 Database ID | `b053e2ca...` |
+
+**可选（需要期刊小结功能时填写）：**
+
+| Secret 名称 | 填入内容 | 示例 |
+|------------|---------|------|
 | `ANTHROPIC_API_KEY` | AI 服务的 API Key | `sk-ant-xxxxx` |
 | `ANTHROPIC_BASE_URL` | AI 服务的 API 端点 | `https://api.anthropic.com/v1` |
 | `ANTHROPIC_MODEL` | 使用的模型名称 | `claude-sonnet-4-20250514` |
 
-> **说明**：七个字段全部必填。代码底层使用 OpenAI 兼容 SDK，变量名沿用 `ANTHROPIC_*` 是历史约定，**名称与实际对接的服务无关**——使用 SiliconFlow、阿里云等任意兼容服务时，直接填入对应的 Key、端点和模型名即可。
+> **翻译说明**：翻译功能使用 Google Translate，完全免费，无需任何 API Key。`ANTHROPIC_*` 仅控制期刊小结的 AI 生成，不填则小结显示文章数量统计。
 
 #### 3. 启用 Actions
 
@@ -244,10 +242,13 @@ on:
 
 ```
 ┌─────────────┐      ┌──────────────┐      ┌──────────────────┐
-│  Crossref   │─────>│    Python    │─────>│  AI 翻译服务      │
-│  Database   │      │    脚本       │      │ (任意 OpenAI 兼容) │
+│  Crossref   │─────>│    Python    │─────>│ Google Translate │
+│  Database   │      │    脚本       │      │    (免费翻译)     │
 └─────────────┘      └──────────────┘      └──────────────────┘
-                            │
+                            │                       ↑ 可选
+                            │               ┌──────────────────┐
+                            │               │  AI 服务（小结）  │
+                            │               └──────────────────┘
                             ▼
                      ┌─────────────┐
                      │   Notion    │
@@ -279,14 +280,11 @@ on:
 3. **期刊不在 Crossref** - 有些期刊可能不收录在 Crossref 数据库
 4. **查看日志** - 检查"最近处理状态"中的错误信息
 
-### 如何降低 API 费用？
-
-本项目已优化为仅翻译标题和摘要，成本估算：
+### 费用是多少？
 
 - **Crossref API**：完全免费
-- **Claude API**：每篇文章约 500-1000 tokens
-  - 订阅 10 个期刊，每周约 $1-3
-  - 订阅 30 个期刊，每周约 $3-8
+- **翻译（Google Translate）**：完全免费，无需任何 Key
+- **期刊小结（AI）**：可选功能，不配置则不产生费用；配置后每期约消耗几百 tokens
 
 ### 可以订阅多少期刊？
 
@@ -294,16 +292,15 @@ on:
 - 建议 10-30 个期刊（平衡时间和成本）
 - 单个期刊处理时间约 1-3 分钟
 
-### 如何自定义翻译？
+### 翻译质量不满意怎么办？
 
-修改 `journal_subscription_v2.py` 中的 `translate_and_extract()` 函数，调整 `prompt` 内容即可。
+翻译使用 Google Translate，准确率对学术文章已足够。如需更高质量，可在 `translate_and_extract()` 函数中替换为其他翻译服务（如 DeepL）。
 
 ### GitHub Actions 运行失败？
 
-1. **检查 Secrets** - 确保所有必需的 Secrets 都已配置
+1. **检查 Secrets** - 确保 4 个 Notion 相关 Secrets 都已配置
 2. **查看日志** - 在 Actions 标签页查看详细错误信息
-3. **Notion 连接** - 确认数据库已添加 Integration 连接
-4. **API 额度** - 检查 API Key 是否有效、是否有足够额度
+3. **Notion 连接** - 确认三个数据库都已添加 Integration 连接
 
 ## 🛠️ 高级配置
 
@@ -326,9 +323,9 @@ works = cr.works(
 2. **不要**修改现有属性的名称和类型
 3. 脚本会自动忽略自定义字段
 
-### 使用其他 AI 服务
+### 切换期刊小结的 AI 服务
 
-系统使用 OpenAI 兼容协议，替换 `api_key`、`base_url`、`model` 三个字段即可切换服务：
+系统使用 OpenAI 兼容协议，替换 `api_key`、`base_url`、`model` 即可切换服务（如 SiliconFlow、阿里云等）：
 
 ```json
 {
@@ -340,13 +337,14 @@ works = cr.works(
 }
 ```
 
-GitHub Actions 中对应的环境变量为 `ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_MODEL`（也支持 `AI_BASE_URL` / `AI_MODEL` 作为别名）。
+GitHub Actions 中对应的环境变量为 `ANTHROPIC_API_KEY`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_MODEL`。
 
 ## 📊 技术栈
 
 - **Python 3.8+**
 - **[habanero](https://github.com/sckott/habanero)** - Crossref API 客户端
-- **[openai](https://github.com/openai/openai-python)** - OpenAI 兼容 SDK（支持 Claude、Qwen 等任意兼容服务）
+- **[deep-translator](https://github.com/nidhaloff/deep-translator)** - Google Translate 封装，用于免费翻译
+- **[openai](https://github.com/openai/openai-python)** - OpenAI 兼容 SDK，用于期刊小结（可选）
 - **[requests](https://requests.readthedocs.io/)** - HTTP 请求库
 - **Notion API** - Notion 数据库操作
 
@@ -361,6 +359,14 @@ GitHub Actions 中对应的环境变量为 `ANTHROPIC_API_KEY`、`ANTHROPIC_BASE
 5. 开启 Pull Request
 
 ## 📝 更新日志
+
+### v2.2.0 (2026-03-30)
+
+- 🌐 翻译改用 Google Translate（免费），彻底去除翻译费用
+- 🔁 新增 DOI 去重，防止重复推送
+- 🔧 Crossref 请求失败自动重试（最多 3 次，指数退避）
+- 🐛 修复 Abstract HTML 实体未解码（`&amp;` 等）
+- ⚙️ AI 配置改为可选，无 Key 时翻译正常，仅跳过期刊小结
 
 ### v2.1.0 (2026-03-29)
 
@@ -385,7 +391,7 @@ GitHub Actions 中对应的环境变量为 `ANTHROPIC_API_KEY`、`ANTHROPIC_BASE
 
 - 灵感来源于学术订阅需求
 - 感谢 Crossref 提供免费的学术文献数据库
-- 感谢 Anthropic 提供强大的 AI 翻译能力
+- 感谢 Google Translate 提供免费的翻译服务
 
 ## 📧 联系方式
 
