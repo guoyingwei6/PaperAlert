@@ -7,6 +7,8 @@
 import os
 import json
 import re
+import html
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from openai import OpenAI
@@ -211,6 +213,40 @@ def update_subscription_status(page_id: str, journal: str, status: str, last_upd
     
     notion_update_page(page_id, properties)
 
+def fetch_existing_dois() -> set:
+    """从 Notion 文章库加载所有已推送文章的 DOI，用于去重（支持分页）"""
+    db_id = CONFIG['notion']['databases']['articles']
+    url = f"https://api.notion.com/v1/databases/{db_id}/query"
+
+    existing_dois = set()
+    start_cursor = None
+
+    while True:
+        payload: dict = {"page_size": 100}
+        if start_cursor:
+            payload["start_cursor"] = start_cursor
+
+        response = requests.post(url, headers=NOTION_HEADERS, json=payload)
+
+        if response.status_code != 200:
+            print(f"  加载已有文章失败: {response.text}")
+            break
+
+        data = response.json()
+        for page in data.get('results', []):
+            link_url = (page.get('properties', {})
+                           .get('Link', {})
+                           .get('url') or '')
+            if 'doi.org/' in link_url:
+                doi = link_url.lower().split('doi.org/')[-1].strip('/')
+                existing_dois.add(doi)
+
+        if not data.get('has_more'):
+            break
+        start_cursor = data.get('next_cursor')
+
+    return existing_dois
+
 # ============== Notion数据提取辅助函数 ==============
 
 def get_notion_title(prop: Dict) -> str:
@@ -238,6 +274,9 @@ def clean_html_tags(text: str) -> str:
     if not text:
         return ''
 
+    # 先解码 HTML 实体（&amp; → &, &lt; → < 等）
+    text = html.unescape(text)
+
     # 移除所有 XML/HTML 标签 (如 <jats:p>, <jats:title> 等)
     text = re.sub(r'<[^>]+>', '', text)
 
@@ -252,34 +291,41 @@ def clean_html_tags(text: str) -> str:
 # ============== Crossref API 函数 ==============
 
 def fetch_articles_by_issn(issn: str, from_date: str, until_date: Optional[str] = None) -> List[Dict]:
-    """根据ISSN抓取文章"""
+    """根据ISSN抓取文章，失败自动重试"""
     if not until_date:
         until_date = datetime.now().strftime("%Y-%m-%d")
-    
-    try:
-        works = cr.works(
-            filter={
-                'issn': issn,
-                'from-pub-date': from_date,
-                'until-pub-date': until_date
-            },
-            limit=100,
-            select=['DOI', 'title', 'author', 'abstract', 'published-print', 
-                   'published-online', 'volume', 'issue', 'URL', 'container-title']
-        )
-        
-        articles = []
-        if works and 'message' in works and 'items' in works['message']:
-            for item in works['message']['items']:
-                article = parse_crossref_item(item)
-                if article:
-                    articles.append(article)
-        
-        return articles
-        
-    except Exception as e:
-        print(f"抓取ISSN {issn} 文章失败: {e}")
-        return []
+
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            works = cr.works(
+                filter={
+                    'issn': issn,
+                    'from-pub-date': from_date,
+                    'until-pub-date': until_date
+                },
+                limit=100,
+                select=['DOI', 'title', 'author', 'abstract', 'published-print',
+                       'published-online', 'volume', 'issue', 'URL', 'container-title']
+            )
+
+            articles = []
+            if works and 'message' in works and 'items' in works['message']:
+                for item in works['message']['items']:
+                    article = parse_crossref_item(item)
+                    if article:
+                        articles.append(article)
+
+            return articles
+
+        except Exception as e:
+            if attempt < max_retries:
+                wait_seconds = 1.5 * attempt
+                print(f"  抓取ISSN {issn} 失败（第{attempt}次），{wait_seconds:.0f}秒后重试: {e}")
+                time.sleep(wait_seconds)
+            else:
+                print(f"  抓取ISSN {issn} 文章失败（已重试{max_retries}次）: {e}")
+                return []
 
 def parse_crossref_item(item: Dict) -> Optional[Dict]:
     """解析Crossref返回的单篇文章数据"""
@@ -496,7 +542,7 @@ def clean_old_articles(days: int = 30):
 
 # ============== 主流程 ==============
 
-def process_journal(journal_data: Dict):
+def process_journal(journal_data: Dict, existing_dois: set):
     """处理单个期刊的订阅"""
     journal_name = journal_data['Journal']
     page_id = journal_data['page_id']
@@ -529,17 +575,25 @@ def process_journal(journal_data: Dict):
     success_count = 0
     for article in articles:
         try:
+            # DOI 去重：已推送过的跳过
+            doi = (article.get('doi') or '').lower().strip('/')
+            if doi and doi in existing_dois:
+                print(f"  跳过（已存在）: {article['title'][:50]}...")
+                continue
+
             print(f"  处理: {article['title'][:50]}...")
             enriched = translate_and_extract(article['title'], article['abstract'])
-            
+
             article_data = {
                 **article,
                 **enriched
             }
-            
+
             if write_article(article_data):
                 success_count += 1
-            
+                if doi:
+                    existing_dois.add(doi)
+
         except Exception as e:
             print(f"    处理文章失败: {e}")
             continue
@@ -593,6 +647,11 @@ def main():
     except Exception as e:
         print(f"清理旧文章失败: {e}")
 
+    # 加载已有文章 DOI，用于去重
+    print("\n加载已有文章 DOI（用于去重）...")
+    existing_dois = fetch_existing_dois()
+    print(f"  已记录 {len(existing_dois)} 篇文章")
+
     subscriptions = read_subscriptions()
 
     if not subscriptions:
@@ -603,7 +662,7 @@ def main():
 
     for sub in subscriptions:
         try:
-            process_journal(sub)
+            process_journal(sub, existing_dois)
         except Exception as e:
             print(f"处理期刊失败: {e}")
             continue
