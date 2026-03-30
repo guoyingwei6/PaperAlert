@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from openai import OpenAI
 from habanero import Crossref
+from deep_translator import GoogleTranslator
 import requests
 
 # ============== 配置加载 ==============
@@ -47,23 +48,21 @@ def load_config():
 
 CONFIG = load_config()
 
-# 验证配置
+# 验证必需配置
 if not CONFIG['notion']['api_key']:
     raise ValueError("请设置Notion API Key")
-if not CONFIG['anthropic']['api_key']:
-    raise ValueError("请设置 AI API Key (ANTHROPIC_API_KEY 或 AI_API_KEY)")
 
-# 初始化客户端
+# 初始化 Crossref 客户端
 cr = Crossref()
 
-# 初始化 AI 客户端（兼容 OpenAI / SiliconFlow / 任意 OpenAI 兼容 API）
-ai_client_config = {'api_key': CONFIG['anthropic']['api_key']}
-if 'base_url' in CONFIG['anthropic']:
-    ai_client_config['base_url'] = CONFIG['anthropic']['base_url']
-ai_client = OpenAI(**ai_client_config)
-
-# 获取模型名称（使用配置中的模型或默认值）
+# AI 客户端（可选，仅用于期刊小结生成；翻译已改用 Google Translate）
+ai_client = None
 AI_MODEL = CONFIG['anthropic'].get('model', 'claude-sonnet-4-20250514')
+if CONFIG['anthropic'].get('api_key'):
+    ai_client_config = {'api_key': CONFIG['anthropic']['api_key']}
+    if 'base_url' in CONFIG['anthropic']:
+        ai_client_config['base_url'] = CONFIG['anthropic']['base_url']
+    ai_client = OpenAI(**ai_client_config)
 
 NOTION_VERSION = "2022-06-28"
 NOTION_HEADERS = {
@@ -393,76 +392,37 @@ def parse_crossref_item(item: Dict) -> Optional[Dict]:
         print(f"解析文章数据失败: {e}")
         return None
 
-# ============== Claude API 函数 ==============
-# (保持之前的实现不变)
+# ============== 翻译函数（Google Translate） ==============
 
 def translate_and_extract(title: str, abstract: str) -> Dict[str, str]:
-    """使用Claude翻译标题和摘要（简化版，节省token）"""
-    if not abstract:
-        # 只翻译标题
-        prompt = f"""请将以下英文标题翻译成中文：
+    """使用 Google Translate 翻译标题和摘要"""
+    translator = GoogleTranslator(source='auto', target='zh-CN')
 
-标题：{title}
-
-要求：
-1. 翻译准确、符合学术规范
-2. 直接输出中文标题，不要其他内容"""
-
-        response = ai_client.chat.completions.create(
-            model=AI_MODEL,
-            max_tokens=500,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        title_cn = response.choices[0].message.content.strip()
-
-        return {
-            'title_cn': title_cn,
-            'abstract_cn': ''
-        }
-
-    # 只翻译标题和摘要，不提取动机和方法
-    prompt = f"""请将以下学术文章的标题和摘要翻译成中文：
-
-标题：{title}
-
-摘要：{abstract}
-
-请按以下JSON格式输出：
-{{
-  "title_cn": "中文标题",
-  "abstract_cn": "中文摘要"
-}}
-
-要求：
-1. 翻译准确、符合学术规范
-2. 只输出JSON，不要其他内容"""
-
+    title_cn = title
     try:
-        response = ai_client.chat.completions.create(
-            model=AI_MODEL,
-            max_tokens=1500,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        result_text = response.choices[0].message.content.strip()
-        if result_text.startswith('```'):
-            result_text = result_text.split('```')[1]
-            if result_text.startswith('json'):
-                result_text = result_text[4:]
-
-        result = json.loads(result_text)
-        return result
-
+        title_cn = translator.translate(title) or title
     except Exception as e:
-        print(f"Claude API调用失败: {e}")
-        return {
-            'title_cn': title,
-            'abstract_cn': abstract
-        }
+        print(f"  标题翻译失败: {e}")
+
+    abstract_cn = ''
+    if abstract:
+        try:
+            # Google Translate 单次最多 5000 字符
+            abstract_cn = translator.translate(abstract[:4500]) or abstract
+        except Exception as e:
+            print(f"  摘要翻译失败: {e}")
+            abstract_cn = abstract
+
+    return {
+        'title_cn': title_cn,
+        'abstract_cn': abstract_cn
+    }
 
 def generate_issue_summary(articles: List[Dict]) -> str:
-    """生成某一期的小结"""
+    """生成某一期的小结（需要 AI 配置，未配置时返回简单统计）"""
+    if not ai_client:
+        return f"本期共收录 {len(articles)} 篇文章。"
+
     if len(articles) > 10:
         articles = articles[:10]
     
